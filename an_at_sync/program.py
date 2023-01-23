@@ -1,6 +1,6 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from os.path import abspath
-from typing import Generator, List, Literal, Optional, Type
+from typing import Any, Generator, List, Literal, Optional, Type, Union
 
 from pyairtable import Table as Airtable
 from pyairtable.formulas import match
@@ -237,7 +237,7 @@ class Program:
             except Exception as e:
                 yield SyncResult(status="failed", kind="activist", e=e)
 
-    def _get_all_events(self):
+    def _get_all_events(self) -> Generator[Union[BaseEvent, SyncResult], Any, Any]:
         for event in self.an.get_all_events():
             try:
                 event_instance: BaseEvent = self.event_class.from_actionnetwork(event)
@@ -245,12 +245,12 @@ class Program:
             except Exception as e:
                 yield SyncResult(status="failed", kind="event", e=e)
 
-    def _get_rsvps_from_event(self, event: dict):
+    def _get_rsvps_from_event(self, event: dict) -> Generator[BaseRSVP, Any, Any]:
         for attendance in self.an.get_attendances_from_event(event):
             yield self.rsvp_class(
                 event=self.event_class.from_actionnetwork(event),
                 activist=self._activist_from_attendance(attendance),
             )
 
-    def _activist_from_attendance(self, attendance):
+    def _activist_from_attendance(self, attendance: dict) -> BaseActivist:
         return self.activist_class.from_actionnetwork(attendance)
