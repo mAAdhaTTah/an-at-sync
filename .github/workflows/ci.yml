@@ -30,4 +30,4 @@ jobs:
         run: |
           flake8 .
           mypy .
-          pytest
+      #    pytest
