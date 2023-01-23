@@ -213,22 +213,22 @@ class Program:
             return SyncResult(status="failed", kind="event", instance=rsvp, e=e)
 
     def write_result(self, result: SyncResult):
-        match result.status:
-            case "unchanged":
-                self.console.print(":information:", end=" ")
-                self.console.print(f"Syncing {result.kind} resulted in no changes")
-            case "inserted":
-                self.console.print(":heavy_plus_sign:", end=" ")
-                self.console.print(f"Syncing {result.kind} inserted new model")
-            case "updated":
-                self.console.print(":white_check_mark:", end=" ")
-                self.console.print(f"Syncing {result.kind} succeeded")
-            case "failed":
-                self.console.print(":x:", end=" ")
-                self.console.print(f"Syncing {result.kind} failed with error:")
-                self.console.print(result.e)
-            case _:
-                raise Exception(f"Unhandled status {result.status}")
+        # TODO(mAAdhaTTah) convert to match when 3.10 is min version
+        if result.status == "unchanged":
+            self.console.print(":information:", end=" ")
+            self.console.print(f"Syncing {result.kind} resulted in no changes")
+        elif result.status == "inserted":
+            self.console.print(":heavy_plus_sign:", end=" ")
+            self.console.print(f"Syncing {result.kind} inserted new model")
+        elif result.status == "updated":
+            self.console.print(":white_check_mark:", end=" ")
+            self.console.print(f"Syncing {result.kind} succeeded")
+        elif result.status == "failed":
+            self.console.print(":x:", end=" ")
+            self.console.print(f"Syncing {result.kind} failed with error:")
+            self.console.print(result.e)
+        else:
+            raise Exception(f"Unhandled status {result.status}")
 
     def _get_all_activists(self):
         for activist in self.an.get_all_activists():
