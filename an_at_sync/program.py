@@ -1,8 +1,9 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from os.path import abspath
-from typing import Generator, List, Literal, Optional, Type
+from typing import Any, Generator, List, Literal, Optional, Type, Union
 
-from airtable import Airtable
+from pyairtable import Table as Airtable
+from pyairtable.formulas import match
 from pydantic import BaseModel as PydanticModel
 from pydantic import BaseSettings
 from rich.console import Console
@@ -62,13 +63,13 @@ class Program:
     ):
         self.an = ActionNetworkApi(api_key=settings.an_api_key)
         self.at_activists = Airtable(
-            settings.at_base, settings.at_activists_table, settings.at_api_key
+            settings.at_api_key, settings.at_base, settings.at_activists_table
         )
         self.at_events = Airtable(
-            settings.at_base, settings.at_events_table, settings.at_api_key
+            settings.at_api_key, settings.at_base, settings.at_events_table
         )
         self.at_rsvps = Airtable(
-            settings.at_base, settings.at_rsvp_table, settings.at_api_key
+            settings.at_api_key, settings.at_base, settings.at_rsvp_table
         )
         self.activist_class = activist_class
         self.event_class = event_class
@@ -76,7 +77,7 @@ class Program:
         self.console = Console()
 
     def match_activist(self, activist: BaseActivist):
-        return self.at_activists.match(*activist.pk())
+        return self.at_activists.first(formula=match(activist.pk()))
 
     def sync_activists(self) -> Generator[SyncResult, None, None]:
         for activist in self._get_all_activists():
@@ -90,9 +91,9 @@ class Program:
     def sync_activist(self, activist: BaseActivist) -> SyncResult:
         try:
             record = self.match_activist(activist)
-            insert = record.get("id") is None
+            insert = record is None
             if insert:
-                self.at_activists.insert(activist.to_airtable())
+                self.at_activists.create(activist.to_airtable())
             else:
                 fields = record["fields"]
                 update = activist.to_airtable()
@@ -116,7 +117,7 @@ class Program:
             return SyncResult(status="failed", kind="activist", instance=activist, e=e)
 
     def match_event(self, event: BaseEvent):
-        return self.at_events.match(*event.pk())
+        return self.at_events.first(formula=match(event.pk()))
 
     def sync_events(self):
         for event in self._get_all_events():
@@ -130,9 +131,9 @@ class Program:
     def sync_event(self, event: BaseEvent):
         try:
             record = self.match_event(event)
-            insert = record.get("id") is None
+            insert = record is None
             if insert:
-                self.at_events.insert(event.to_airtable())
+                self.at_events.create(event.to_airtable())
             else:
                 fields = record["fields"]
                 update = event.to_airtable()
@@ -145,7 +146,6 @@ class Program:
                         instance=event,
                         e=None,
                     )
-                self.console.print(update["Start At"], fields["Start At"])
                 self.at_events.update(record["id"], update)
             return SyncResult(
                 status="inserted" if insert else "updated",
@@ -171,25 +171,25 @@ class Program:
     def sync_rsvp(self, rsvp: BaseRSVP):
         try:
             activist_record = self.match_activist(rsvp.activist)
-            activist_record_id = activist_record.get("id")
+            activist_record_id = activist_record["id"] if activist_record else None
             if activist_record_id is None:
-                activist_record = self.at_activists.insert(rsvp.activist.to_airtable())
+                activist_record = self.at_activists.create(rsvp.activist.to_airtable())
                 activist_record_id = activist_record["id"]
 
             event_record = self.match_event(rsvp.event)
-            event_record_id = event_record.get("id")
+            event_record_id = event_record["id"] if event_record else None
             if event_record_id is None:
-                event_record = self.at_events.insert(rsvp.event.to_airtable())
+                event_record = self.at_events.create(rsvp.event.to_airtable())
                 event_record_id = event_record["id"]
 
             """
             WARNING: Extract this logic if we find ourselves needing it elsewhere
             """
             rsvp_id = f"{activist_record_id}-{event_record_id}"
-            rsvp_record = self.at_rsvps.match(rsvp.id_column(), rsvp_id)
-            insert = rsvp_record.get("id") is None
+            rsvp_record = self.at_rsvps.first(formula=match({rsvp.id_column(): rsvp_id}))
+            insert = rsvp_record is None
             if insert:
-                self.at_rsvps.insert(
+                self.at_rsvps.create(
                     {
                         rsvp.id_column(): rsvp_id,
                         rsvp.activist_column(): [activist_record_id],
@@ -213,22 +213,22 @@ class Program:
             return SyncResult(status="failed", kind="event", instance=rsvp, e=e)
 
     def write_result(self, result: SyncResult):
-        match result.status:
-            case "unchanged":
-                self.console.print(":information:", end=" ")
-                self.console.print(f"Syncing {result.kind} resulted in no changes")
-            case "inserted":
-                self.console.print(":heavy_plus_sign:", end=" ")
-                self.console.print(f"Syncing {result.kind} inserted new model")
-            case "updated":
-                self.console.print(":white_check_mark:", end=" ")
-                self.console.print(f"Syncing {result.kind} succeeded")
-            case "failed":
-                self.console.print(":x:", end=" ")
-                self.console.print(f"Syncing {result.kind} failed with error:")
-                self.console.print(result.e)
-            case _:
-                raise Exception(f"Unhandled status {result.status}")
+        # TODO(mAAdhaTTah) convert to match when 3.10 is min version
+        if result.status == "unchanged":
+            self.console.print(":information:", end=" ")
+            self.console.print(f"Syncing {result.kind} resulted in no changes")
+        elif result.status == "inserted":
+            self.console.print(":heavy_plus_sign:", end=" ")
+            self.console.print(f"Syncing {result.kind} inserted new model")
+        elif result.status == "updated":
+            self.console.print(":white_check_mark:", end=" ")
+            self.console.print(f"Syncing {result.kind} succeeded")
+        elif result.status == "failed":
+            self.console.print(":x:", end=" ")
+            self.console.print(f"Syncing {result.kind} failed with error:")
+            self.console.print(result.e)
+        else:
+            raise Exception(f"Unhandled status {result.status}")
 
     def _get_all_activists(self):
         for activist in self.an.get_all_activists():
@@ -237,7 +237,7 @@ class Program:
             except Exception as e:
                 yield SyncResult(status="failed", kind="activist", e=e)
 
-    def _get_all_events(self):
+    def _get_all_events(self) -> Generator[Union[BaseEvent, SyncResult], Any, Any]:
         for event in self.an.get_all_events():
             try:
                 event_instance: BaseEvent = self.event_class.from_actionnetwork(event)
@@ -245,12 +245,12 @@ class Program:
             except Exception as e:
                 yield SyncResult(status="failed", kind="event", e=e)
 
-    def _get_rsvps_from_event(self, event: dict):
+    def _get_rsvps_from_event(self, event: dict) -> Generator[BaseRSVP, Any, Any]:
         for attendance in self.an.get_attendances_from_event(event):
             yield self.rsvp_class(
                 event=self.event_class.from_actionnetwork(event),
                 activist=self._activist_from_attendance(attendance),
             )
 
-    def _activist_from_attendance(self, attendance):
+    def _activist_from_attendance(self, attendance: dict) -> BaseActivist:
         return self.activist_class.from_actionnetwork(attendance)
