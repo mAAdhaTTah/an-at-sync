@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from abc import abstractclassmethod, abstractmethod
-from typing import TYPE_CHECKING, Any, Iterable, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 if TYPE_CHECKING:
     from .program import Program
 
 from pydantic import BaseModel as PydanticModel
-
-PKey = Tuple[str, str]
 
 
 class BaseModel(PydanticModel):
@@ -21,7 +19,7 @@ class AirtableTransformerModel(BaseModel):
         raise NotImplementedError()
 
     @abstractmethod
-    def pk(self) -> PKey:
+    def pk(self) -> Dict:
         raise NotImplementedError()
 
     @abstractmethod
@@ -62,6 +60,8 @@ class BaseRSVP(BaseModel):
 
 
 class BaseEvent(AirtableTransformerModel):
+    rsvps: Optional[List[BaseRSVP]]
+
     def set_rsvps(self, rsvps: List[BaseRSVP]) -> None:
         self.rsvps = rsvps
 
