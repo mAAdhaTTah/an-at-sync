@@ -187,7 +187,9 @@ class Program:
             WARNING: Extract this logic if we find ourselves needing it elsewhere
             """
             rsvp_id = f"{activist_record_id}-{event_record_id}"
-            rsvp_record = self.at_rsvps.first(formula=match({rsvp.id_column(): rsvp_id}))
+            rsvp_record = self.at_rsvps.first(
+                formula=match({rsvp.id_column(): rsvp_id})
+            )
             insert = rsvp_record is None
             if insert:
                 self.at_rsvps.create(
