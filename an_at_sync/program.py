@@ -1,6 +1,7 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from os.path import abspath
-from typing import Any, Generator, List, Literal, Optional, Type, Union
+from typing import Any, Generator, List, Optional, Type, Union
+from typing_extensions import Literal
 
 from pyairtable import Table as Airtable
 from pyairtable.formulas import match
