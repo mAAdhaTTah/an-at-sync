@@ -20,7 +20,7 @@ with open(path.join(HERE, "requirements.txt"), encoding="utf-8") as f:
 
 setup(
     name="an_at_sync",
-    version="0.1.1",
+    version="0.1.2",
     description="Python package & cli for syncing between ActionNetwork & AirTable",
     long_description=long_description,
     long_description_content_type="text/markdown",
