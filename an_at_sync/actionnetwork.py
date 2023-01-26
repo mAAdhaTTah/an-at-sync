@@ -1,7 +1,7 @@
 from typing import Iterable
 from urllib.parse import quote
 
-import requests
+from requests import Session
 
 
 class ActionNetworkApi:
@@ -14,7 +14,8 @@ class ActionNetworkApi:
 
     def __init__(self, api_key, **kwargs):
         """Instantiate the API client and get config."""
-        self.headers = {"OSDI-API-Token": api_key}
+        self.session = Session()
+        self.session.headers.update({"OSDI-API-Token": api_key})
         self.refresh_config()
         self.base_url = self.config.get("links", {}).get(
             "self", "https://actionnetwork.org/api/v2/"
@@ -22,9 +23,7 @@ class ActionNetworkApi:
 
     def refresh_config(self):
         """Get a new version of the base_url config."""
-        self.config = requests.get(
-            url="https://actionnetwork.org/api/v2/", headers=self.headers
-        ).json()
+        self.config = self.session.get(url="https://actionnetwork.org/api/v2/").json()
 
     def resource_to_url(self, resource):
         """Convert a named endpoint into a URL.
@@ -50,7 +49,7 @@ class ActionNetworkApi:
             (dict) API response from endpoint or `None` if not found/valid.
         """
         url = self.resource_to_url(resource)
-        return requests.get(url, headers=self.headers).json()
+        return self.session.get(url).json()
 
     def get_person(self, person_id=None, search_by="email", search_string=None):
         """Search for a user.
@@ -69,7 +68,7 @@ class ActionNetworkApi:
                 self.base_url, search_by, quote(search_string)
             )
 
-        resp = requests.get(url, headers=self.headers)
+        resp = self.session.get(url)
         return resp.json()
 
     def create_person(
@@ -133,7 +132,7 @@ class ActionNetworkApi:
             "add_tags": list(tags),
         }
 
-        resp = requests.post(url, json=payload, headers=self.headers)
+        resp = self.session.post(url, json=payload)
         return resp.json()
 
     def update_person(
@@ -194,13 +193,12 @@ class ActionNetworkApi:
             "custom_fields": custom_fields,
         }
 
-        resp = requests.put(url, json=payload, headers=self.headers)
-        return resp.json()
+        return self.session.put(url, json=payload).json()
 
     def get_all_activists(self) -> Iterable[dict]:
         url = self.resource_to_url("people")
         while url:
-            body = requests.get(url, headers=self.headers).json()
+            body = self.session.get(url).json()
             for activist in body.get("_embedded", {}).get("osdi:people", []):
                 yield activist
 
@@ -210,7 +208,7 @@ class ActionNetworkApi:
     def get_all_events(self):
         url = self.resource_to_url("events")
         while url:
-            body = requests.get(url, headers=self.headers).json()
+            body = self.session.get(url).json()
             for event in body.get("_embedded").get("osdi:events"):
                 yield event
 
@@ -219,18 +217,18 @@ class ActionNetworkApi:
 
     def get_event(self, event):
         url = self.resource_to_url("events")
-        return requests.get(f"{url}/{event}", headers=self.headers).json()
+        return self.session.get(f"{url}/{event}").json()
 
     def get_attendances_from_event(self, event: dict):
         next_href = event["_links"]["osdi:attendances"]["href"]
 
         while next_href:
-            response = requests.get(next_href, headers=self.headers)
+            response = self.session.get(next_href)
             attendances_body = response.json()
 
             for attendance in attendances_body["_embedded"]["osdi:attendances"]:
                 person_url = attendance["_links"]["osdi:person"]["href"]
-                person_body = requests.get(person_url, headers=self.headers).json()
+                person_body = self.session.get(person_url).json()
                 yield person_body
 
             try:
