@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractclassmethod, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 if TYPE_CHECKING:
     from .program import Program
@@ -15,7 +15,7 @@ class BaseModel(PydanticModel):
 
 class AirtableTransformerModel(BaseModel):
     @abstractclassmethod
-    def from_actionnetwork(self, source: dict) -> Any:  # TODO use Self in py 3.11
+    def from_actionnetwork(cls, source: dict, custom_fields: Optional[dict] = None):
         raise NotImplementedError()
 
     @abstractmethod

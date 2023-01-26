@@ -1,5 +1,5 @@
 from importlib.util import module_from_spec, spec_from_file_location
-from os.path import abspath
+from pathlib import Path
 from typing import Any, Generator, List, Optional, Type, Union
 from typing_extensions import Literal
 
@@ -14,8 +14,8 @@ from an_at_sync.model import BaseActivist, BaseEvent, BaseModel, BaseRSVP
 
 
 class SyncResult(PydanticModel):
-    status: Literal["unchanged", "inserted", "updated", "failed"]
-    kind: Literal["activist", "event", "rsvp"]
+    status: Literal["unchanged", "inserted", "updated", "skipped", "failed"]
+    kind: Literal["activist", "event", "rsvp", "webhook"]
     instance: Optional[BaseModel]
     e: Optional[Exception]
 
@@ -44,9 +44,7 @@ class Program:
     console: Console
 
     @staticmethod
-    def load_config(config: str):
-        config_path = abspath(config)
-
+    def load_config(config_path: Path):
         spec = spec_from_file_location("config", config_path)
         if spec is None or spec.loader is None:
             raise Exception("spec or spec.loader for config was None")
@@ -98,9 +96,7 @@ class Program:
             else:
                 fields = record["fields"]
                 update = activist.to_airtable()
-                if update == {
-                    key: fields[key] if key in fields else None for key in update
-                }:
+                if update == {key: fields.get(key, "") for key in update}:
                     return SyncResult(
                         status="unchanged",
                         kind="activist",
@@ -215,6 +211,34 @@ class Program:
         except Exception as e:
             return SyncResult(status="failed", kind="event", instance=rsvp, e=e)
 
+    def handle_webhook(self, webhook_body: List[dict]):
+        for webhook_event in webhook_body:
+            attendance = webhook_event.get("osdi:attendance")
+            if attendance is None:
+                yield SyncResult(status="skipped", kind="webhook")
+                continue
+
+            an_person = self.an.session.get(
+                attendance["_links"]["osdi:person"]["href"]
+            ).json()
+            activist = self.activist_class.from_actionnetwork(
+                an_person,
+                custom_fields=attendance["_links"]["osdi:person"].get("custom_fields"),
+            )
+            yield self.sync_activist(activist=activist)
+
+            an_event = self.an.session.get(
+                attendance["_links"]["osdi:event"]["href"]
+            ).json()
+            event = self.event_class.from_actionnetwork(
+                an_event,
+                custom_fields=attendance["_links"]["osdi:person"].get("custom_fields"),
+            )
+            yield self.sync_event(event)
+
+            rsvp = self.rsvp_class(activist=activist, event=event)
+            yield self.sync_rsvp(rsvp)
+
     def write_result(self, result: SyncResult):
         # TODO(mAAdhaTTah) convert to match when 3.10 is min version
         if result.status == "unchanged":
@@ -252,8 +276,5 @@ class Program:
         for attendance in self.an.get_attendances_from_event(event):
             yield self.rsvp_class(
                 event=self.event_class.from_actionnetwork(event),
-                activist=self._activist_from_attendance(attendance),
+                activist=self.activist_class.from_actionnetwork(attendance),
             )
-
-    def _activist_from_attendance(self, attendance: dict) -> BaseActivist:
-        return self.activist_class.from_actionnetwork(attendance)
