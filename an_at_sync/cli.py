@@ -21,14 +21,7 @@ def sync(config: Path = ConfigOption):
     config_file = Program.load_config(config)
 
     program = Program(
-        settings=ProgramSettings(
-            an_api_key=config_file.AN_API_KEY,
-            at_base=config_file.AT_BASE,
-            at_activists_table=config_file.AT_ACTIVISTS_TABLE,
-            at_events_table=config_file.AT_EVENTS_TABLE,
-            at_rsvp_table=config_file.AT_RSVP_TABLE,
-            at_api_key=config_file.AT_API_KEY,
-        ),
+        settings=ProgramSettings(),
         activist_class=config_file.Activist,
         event_class=config_file.Event,
         rsvp_class=config_file.RSVP,
@@ -53,14 +46,7 @@ def webhook(
     config_file = Program.load_config(config)
 
     program = Program(
-        settings=ProgramSettings(
-            an_api_key=config_file.AN_API_KEY,
-            at_base=config_file.AT_BASE,
-            at_activists_table=config_file.AT_ACTIVISTS_TABLE,
-            at_events_table=config_file.AT_EVENTS_TABLE,
-            at_rsvp_table=config_file.AT_RSVP_TABLE,
-            at_api_key=config_file.AT_API_KEY,
-        ),
+        settings=ProgramSettings(),
         activist_class=config_file.Activist,
         event_class=config_file.Event,
         rsvp_class=config_file.RSVP,

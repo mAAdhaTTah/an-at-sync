@@ -5,3 +5,4 @@ config.py
 build
 *.egg-info
 dist
+.env
