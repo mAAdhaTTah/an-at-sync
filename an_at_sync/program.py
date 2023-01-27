@@ -36,6 +36,9 @@ class ProgramSettings(BaseSettings):
     at_rsvp_table: str
     at_api_key: str
 
+    class Config:
+        env_file = ".env"
+
 
 class Program:
     an: ActionNetworkApi
