@@ -254,6 +254,9 @@ class Program:
             self.console.print(":x:", end=" ")
             self.console.print(f"Syncing {result.kind} failed with error:")
             self.console.print(result.e)
+        elif result.status == "skipped":
+            self.console.print(":information:", end=" ")
+            self.console.print(f"{result.kind} was skipped")
         else:
             raise Exception(f"Unhandled status {result.status}")
 
