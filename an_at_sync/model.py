@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from abc import abstractclassmethod, abstractmethod
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Type, TypeVar
 
 if TYPE_CHECKING:
     from .program import Program
 
 from pydantic import BaseModel as PydanticModel
+
+T = TypeVar("T")
 
 
 class BaseModel(PydanticModel):
@@ -14,8 +16,11 @@ class BaseModel(PydanticModel):
 
 
 class AirtableTransformerModel(BaseModel):
-    @abstractclassmethod
-    def from_actionnetwork(cls, source: dict, custom_fields: Optional[dict] = None):
+    @classmethod
+    @abstractmethod
+    def from_actionnetwork(
+        cls: Type[T], source: dict, custom_fields: Optional[dict] = None
+    ) -> T:
         raise NotImplementedError()
 
     @abstractmethod
