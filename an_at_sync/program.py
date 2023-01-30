@@ -1,16 +1,23 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Type, Union
+from typing import Iterable, List, Optional, Type
 from typing_extensions import Literal
 
 from pyairtable import Table as Airtable
-from pyairtable.formulas import match
 from pydantic import BaseModel as PydanticModel
 from pydantic import BaseSettings
 from rich.console import Console
 
 from an_at_sync.actionnetwork import ActionNetworkApi
-from an_at_sync.model import BaseActivist, BaseEvent, BaseModel, BaseRSVP
+from an_at_sync.model import (
+    ActivistRepository,
+    BaseActivist,
+    BaseEvent,
+    BaseModel,
+    BaseRSVP,
+    EventRepository,
+    RSVPRepository,
+)
 
 
 class SyncResult(PydanticModel):
@@ -41,11 +48,6 @@ class ProgramSettings(BaseSettings):
 
 
 class Program:
-    an: ActionNetworkApi
-    at_events: Airtable
-    at_activists: Airtable
-    console: Console
-
     @staticmethod
     def load_config(config_path: Path):
         spec = spec_from_file_location("config", config_path)
@@ -63,50 +65,48 @@ class Program:
         event_class: Type[BaseEvent],
         rsvp_class: Type[BaseRSVP],
     ):
-        self.an = ActionNetworkApi(api_key=settings.an_api_key)
-        self.at_activists = Airtable(
-            settings.at_api_key, settings.at_base, settings.at_activists_table
+        an = ActionNetworkApi(api_key=settings.an_api_key)
+
+        self.events = EventRepository(
+            an=an,
+            at=Airtable(
+                settings.at_api_key, settings.at_base, settings.at_events_table
+            ),
+            klass=event_class,
         )
-        self.at_events = Airtable(
-            settings.at_api_key, settings.at_base, settings.at_events_table
+        self.activists = ActivistRepository(
+            an=an,
+            at=Airtable(
+                settings.at_api_key, settings.at_base, settings.at_activists_table
+            ),
+            klass=activist_class,
         )
-        self.at_rsvps = Airtable(
-            settings.at_api_key, settings.at_base, settings.at_rsvp_table
+        self.rsvps = RSVPRepository(
+            an=an,
+            at=Airtable(settings.at_api_key, settings.at_base, settings.at_rsvp_table),
+            klass=rsvp_class,
         )
-        self.activist_class = activist_class
-        self.event_class = event_class
-        self.rsvp_class = rsvp_class
         self.console = Console()
 
-    def match_activist(self, activist: BaseActivist):
-        return self.at_activists.first(formula=match(activist.pk()))
-
-    def sync_activists(self) -> Generator[SyncResult, None, None]:
-        for activist in self._get_all_activists():
-            activist_result = (
-                activist
-                if isinstance(activist, SyncResult)
-                else self.sync_activist(activist)
-            )
-            yield activist_result
+    def sync_activists(self) -> Iterable[SyncResult]:
+        for activist in self.activists.all_from_actionnetwork():
+            yield self.sync_activist(activist)
 
     def sync_activist(self, activist: BaseActivist) -> SyncResult:
         try:
-            record = self.match_activist(activist)
+            record = self.activists.get_airtable_record(activist)
             insert = record is None
             if insert:
-                self.at_activists.create(activist.to_airtable())
+                self.activists.insert_airtable_record(activist)
             else:
-                fields = record["fields"]
-                update = activist.to_airtable()
-                if update == {key: fields.get(key, "") for key in update}:
+                if not self.activists.should_update_airtable_record(activist):
                     return SyncResult(
                         status="unchanged",
                         kind="activist",
                         instance=activist,
                         e=None,
                     )
-                self.at_activists.update(record["id"], update)
+                self.activists.update_airtable_record(activist)
             return SyncResult(
                 status="inserted" if insert else "updated",
                 kind="activist",
@@ -116,37 +116,25 @@ class Program:
         except Exception as e:
             return SyncResult(status="failed", kind="activist", instance=activist, e=e)
 
-    def match_event(self, event: BaseEvent):
-        return self.at_events.first(formula=match(event.pk()))
+    def sync_events(self) -> Iterable[SyncResult]:
+        for event in self.events.all_from_actionnetwork():
+            yield self.sync_event(event)
 
-    def sync_events(self):
-        for event in self._get_all_events():
-            event_result = (
-                event if isinstance(event, SyncResult) else self.sync_event(event)
-            )
-            yield event_result
-            if event_result.status != "failed":
-                yield from self.sync_rsvps_from_event_result(event_result)
-
-    def sync_event(self, event: BaseEvent):
+    def sync_event(self, event: BaseEvent) -> SyncResult:
         try:
-            record = self.match_event(event)
+            record = self.events.get_airtable_record(event)
             insert = record is None
             if insert:
-                self.at_events.create(event.to_airtable())
+                self.events.insert_airtable_record(event)
             else:
-                fields = record["fields"]
-                update = event.to_airtable()
-                if update == {
-                    key: fields[key] if key in fields else None for key in update
-                }:
+                if not self.events.should_update_airtable_record(event):
                     return SyncResult(
                         status="unchanged",
                         kind="event",
                         instance=event,
                         e=None,
                     )
-                self.at_events.update(record["id"], update)
+                self.events.update_airtable_record(event)
             return SyncResult(
                 status="inserted" if insert else "updated",
                 kind="event",
@@ -156,57 +144,40 @@ class Program:
         except Exception as e:
             return SyncResult(status="failed", kind="event", instance=event, e=e)
 
-    def sync_rsvps_from_event_result(self, result: SyncResult):
-        if (
-            result.status != "failed"
-            and isinstance(result.instance, BaseEvent)
-            and result.instance.rsvps
-        ):
-            yield from self.sync_rsvps(result.instance.rsvps)
+    def sync_rsvps_from_event(self, event: BaseEvent):
+        yield from self.sync_rsvps(
+            self.rsvps.from_actionnetwork_for_event(
+                event,
+                events=self.events,
+                activists=self.activists,
+            ),
+        )
 
-    def sync_rsvps(self, rsvps: List[BaseRSVP]):
+    def sync_rsvps(self, rsvps: Iterable[BaseRSVP]):
         for rsvp in rsvps:
             yield self.sync_rsvp(rsvp)
 
     def sync_rsvp(self, rsvp: BaseRSVP):
         try:
-            activist_record = self.match_activist(rsvp.activist)
-            activist_record_id = activist_record["id"] if activist_record else None
-            if activist_record_id is None:
-                activist_record = self.at_activists.create(rsvp.activist.to_airtable())
-                activist_record_id = activist_record["id"]
-
-            event_record = self.match_event(rsvp.event)
-            event_record_id = event_record["id"] if event_record else None
-            if event_record_id is None:
-                event_record = self.at_events.create(rsvp.event.to_airtable())
-                event_record_id = event_record["id"]
-
-            """
-            WARNING: Extract this logic if we find ourselves needing it elsewhere
-            """
-            rsvp_id = f"{activist_record_id}-{event_record_id}"
-            rsvp_record = self.at_rsvps.first(
-                formula=match({rsvp.id_column(): rsvp_id})
-            )
+            rsvp_record = self.rsvps.get_airtable_record(rsvp)
             insert = rsvp_record is None
             if insert:
-                self.at_rsvps.create(
-                    {
-                        rsvp.id_column(): rsvp_id,
-                        rsvp.activist_column(): [activist_record_id],
-                        rsvp.event_column(): [event_record_id],
-                    }
+                self.rsvps.insert_airtable_record(
+                    rsvp,
+                    activist_record=self.activists.get_airtable_record(rsvp.activist),
+                    event_record=self.events.get_airtable_record(rsvp.event),
                 )
-                return SyncResult(
-                    status="inserted",
-                    kind="rsvp",
-                    instance=rsvp,
-                    e=None,
-                )
-
+            else:
+                if not self.rsvps.should_update_airtable_record(rsvp):
+                    return SyncResult(
+                        status="unchanged",
+                        kind="rsvp",
+                        instance=rsvp,
+                        e=None,
+                    )
+                self.rsvps.update_airtable_record(rsvp)
             return SyncResult(
-                status="unchanged",
+                status="inserted" if insert else "updated",
                 kind="rsvp",
                 instance=rsvp,
                 e=None,
@@ -220,67 +191,51 @@ class Program:
             if attendance is None:
                 yield SyncResult(status="skipped", kind="webhook")
                 continue
-
-            an_person = self.an.session.get(
-                attendance["_links"]["osdi:person"]["href"]
-            ).json()
-            activist = self.activist_class.from_actionnetwork(
-                an_person,
+            activist = self.activists.from_actionnetwork_url(
+                attendance["_links"]["osdi:person"]["href"],
                 custom_fields=attendance["_links"]["osdi:person"].get("custom_fields"),
             )
-            yield self.sync_activist(activist=activist)
+            yield self.sync_activist(activist)
 
-            an_event = self.an.session.get(
-                attendance["_links"]["osdi:event"]["href"]
-            ).json()
-            event = self.event_class.from_actionnetwork(
-                an_event,
+            event = self.events.from_actionnetwork_url(
+                attendance["_links"]["osdi:event"]["href"],
                 custom_fields=attendance["_links"]["osdi:person"].get("custom_fields"),
             )
             yield self.sync_event(event)
 
-            rsvp = self.rsvp_class(activist=activist, event=event)
+            rsvp = self.rsvps.klass.from_actionnetwork(
+                attendance,
+                activist=activist,
+                event=event,
+                activist_record=self.activists.get_airtable_record(activist),
+                event_record=self.events.get_airtable_record(event),
+            )
             yield self.sync_rsvp(rsvp)
 
     def write_result(self, result: SyncResult):
+        display_name = (" " + result.instance.display_name()) if result.instance else ""
         # TODO(mAAdhaTTah) convert to match when 3.10 is min version
         if result.status == "unchanged":
             self.console.print(":information:", end=" ")
-            self.console.print(f"Syncing {result.kind} resulted in no changes")
+            self.console.print(
+                f"Syncing {result.kind}{display_name} resulted in no changes"
+            )
         elif result.status == "inserted":
             self.console.print(":heavy_plus_sign:", end=" ")
-            self.console.print(f"Syncing {result.kind} inserted new model")
+            self.console.print(
+                f"Syncing {result.kind}{display_name} inserted new model"
+            )
         elif result.status == "updated":
             self.console.print(":white_check_mark:", end=" ")
-            self.console.print(f"Syncing {result.kind} succeeded")
+            self.console.print(f"Syncing {result.kind}{display_name} succeeded")
         elif result.status == "failed":
             self.console.print(":x:", end=" ")
-            self.console.print(f"Syncing {result.kind} failed with error:")
+            self.console.print(
+                f"Syncing {result.kind}{display_name} failed with error:"
+            )
             self.console.print(result.e)
         elif result.status == "skipped":
             self.console.print(":information:", end=" ")
-            self.console.print(f"{result.kind} was skipped")
+            self.console.print(f"{result.kind}{display_name} was skipped")
         else:
             raise Exception(f"Unhandled status {result.status}")
-
-    def _get_all_activists(self):
-        for activist in self.an.get_all_activists():
-            try:
-                yield self.activist_class.from_actionnetwork(activist)
-            except Exception as e:
-                yield SyncResult(status="failed", kind="activist", e=e)
-
-    def _get_all_events(self) -> Generator[Union[BaseEvent, SyncResult], Any, Any]:
-        for event in self.an.get_all_events():
-            try:
-                event_instance: BaseEvent = self.event_class.from_actionnetwork(event)
-                yield from event_instance.finalize(self, event)
-            except Exception as e:
-                yield SyncResult(status="failed", kind="event", e=e)
-
-    def _get_rsvps_from_event(self, event: dict) -> Generator[BaseRSVP, Any, Any]:
-        for attendance in self.an.get_attendances_from_event(event):
-            yield self.rsvp_class(
-                event=self.event_class.from_actionnetwork(event),
-                activist=self.activist_class.from_actionnetwork(attendance),
-            )

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 # Always prefer setuptools over distutils
-from setuptools import setup
-
 # To use a consistent encoding
 from codecs import open
 from os import path
+
+from setuptools import setup
 
 # The directory containing this file
 HERE = path.abspath(path.dirname(__file__))
