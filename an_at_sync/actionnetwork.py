@@ -223,13 +223,8 @@ class ActionNetworkApi:
         next_href = event["_links"]["osdi:attendances"]["href"]
 
         while next_href:
-            response = self.session.get(next_href)
-            attendances_body = response.json()
-
-            for attendance in attendances_body["_embedded"]["osdi:attendances"]:
-                person_url = attendance["_links"]["osdi:person"]["href"]
-                person_body = self.session.get(person_url).json()
-                yield person_body
+            attendances_body = self.session.get(next_href).json()
+            yield from attendances_body["_embedded"]["osdi:attendances"]
 
             try:
                 next_href = attendances_body["_links"]["next"]["href"]
