@@ -207,13 +207,30 @@ class ActionNetworkApi:
 
     def get_all_events(self):
         url = self.resource_to_url("events")
+        yield from self._get_all_events_from_url(url)
+
+    def get_all_events_from_event_campaigns(self):
+        url = self.resource_to_url("action_network:event_campaigns")
         while url:
             body = self.session.get(url).json()
-            for event in body.get("_embedded").get("osdi:events"):
-                yield event
+            for event_campaign in body.get("_embedded").get(
+                "action_network:event_campaigns"
+            ):
+                events_url = event_campaign["_links"]["osdi:events"]["href"]
+                yield from self._get_all_events_from_url(events_url)
 
             next_link = body["_links"].get("next")
             url = next_link.get("href") if next_link else None
+
+    def _get_all_events_from_url(self, url):
+        body = self.session.get(url).json()
+        for event in body.get("_embedded").get("osdi:events"):
+            yield event
+
+        next_link = body["_links"].get("next")
+        next_url = next_link.get("href") if next_link else None
+        if next_url:
+            yield from self._get_all_events_from_url(next_url)
 
     def get_event(self, event):
         url = self.resource_to_url("events")
