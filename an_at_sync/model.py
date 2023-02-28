@@ -5,7 +5,7 @@ from typing import Any, Dict, Generic, Iterable, List, Optional, Type, TypeVar, 
 
 from pyairtable import Table
 from pyairtable.formulas import match
-from pydantic import BaseModel as PydanticModel
+from pydantic import BaseModel as PydanticModel, ValidationError
 
 from an_at_sync.actionnetwork import ActionNetworkApi
 
@@ -72,8 +72,10 @@ class BaseEvent(BaseModel):
                 an_attendance,
                 event=self,
                 activist=activist,
-                event_record=events.get_airtable_record(self),
-                activist_record=activists.get_airtable_record(activist),
+                event_record=events.get_airtable_record(self)
+                or events.insert_airtable_record(self),
+                activist_record=activists.get_airtable_record(activist)
+                or activists.insert_airtable_record(activist),
             )
 
 
@@ -102,7 +104,7 @@ class ObjectDict(Generic[KOD, VOD]):
             self.keys.append(key)
             self.values.append(val)
 
-    def get(self, key) -> Union[VOD, None]:
+    def get(self, key) -> Optional[VOD]:
         for i, existing_key in enumerate(self.keys):
             if existing_key == key:
                 return self.values[i]
@@ -152,7 +154,7 @@ class BaseRepository(Generic[M]):
 
         # Handle situations where an empty string on the AN side maps
         # to None on the AT side, such that an update would produce
-        # no changes but this would other mark them as different
+        # no changes but this would otherwise mark them as different
         return {key: empty_str_to_none(update.get(key)) for key in update} != {
             key: empty_str_to_none(fields.get(key)) for key in update
         }
@@ -182,13 +184,26 @@ class BaseRepository(Generic[M]):
 
 
 class EventRepository(BaseRepository[BaseEvent]):
-    def all_from_actionnetwork(self) -> Iterable[BaseEvent]:
+    def all_from_actionnetwork(self) -> Iterable[Union[BaseEvent, ValidationError]]:
         for an_event in self.an.get_all_events():
-            event = self.an_to_model.get(an_event)
-            if not event:
-                event = self.klass.from_actionnetwork(an_event)
-                self._associate_model(event, an_model=an_event)
-            yield from event.postprocess()
+            try:
+                event = self.an_to_model.get(an_event)
+                if not event:
+                    event = self.klass.from_actionnetwork(an_event)
+                    self._associate_model(event, an_model=an_event)
+                yield from event.postprocess()
+            except ValidationError as e:
+                yield e
+
+        for an_event in self.an.get_all_events_from_event_campaigns():
+            try:
+                event = self.an_to_model.get(an_event)
+                if not event:
+                    event = self.klass.from_actionnetwork(an_event)
+                    self._associate_model(event, an_model=an_event)
+                yield from event.postprocess()
+            except ValidationError as e:
+                yield e
 
 
 class ActivistRepository(BaseRepository[BaseActivist]):

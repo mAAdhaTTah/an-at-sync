@@ -4,8 +4,7 @@ from typing import Iterable, List, Optional, Type
 from typing_extensions import Literal
 
 from pyairtable import Table as Airtable
-from pydantic import BaseModel as PydanticModel
-from pydantic import BaseSettings
+from pydantic import BaseModel as PydanticModel, BaseSettings, ValidationError
 from rich.console import Console
 
 from an_at_sync.actionnetwork import ActionNetworkApi
@@ -118,7 +117,11 @@ class Program:
 
     def sync_events(self) -> Iterable[SyncResult]:
         for event in self.events.all_from_actionnetwork():
-            yield self.sync_event(event)
+            if isinstance(event, ValidationError):
+                yield SyncResult(status="failed", kind="event", e=event)
+
+            if isinstance(event, BaseEvent):
+                yield self.sync_event(event)
 
     def sync_event(self, event: BaseEvent) -> SyncResult:
         try:
