@@ -8,15 +8,6 @@ from an_at_sync.program import Program, ProgramSettings
 
 main = Typer()
 
-ConfigOption = Option(
-    "config.py",
-    help="Config file to load",
-    exists=True,
-    file_okay=True,
-    dir_okay=False,
-    resolve_path=True,
-)
-
 
 @main.command("init")
 def init():
@@ -28,7 +19,7 @@ main.add_typer(sync, name="sync")
 
 
 @sync.command("events")
-def events(config: Path = ConfigOption, sync_rsvps: bool = Option(False, "--rsvps")):
+def events(sync_rsvps: bool = Option(False, "--rsvps")):
     program = Program(
         settings=ProgramSettings(),
     )
