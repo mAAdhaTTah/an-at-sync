@@ -1,11 +1,10 @@
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-from typing import Iterable, List, Optional, Type
-from typing_extensions import Literal
+from typing import Any, Iterable, List, Optional, Type, cast
 
 from pyairtable import Table as Airtable
-from pydantic import BaseModel as PydanticModel, BaseSettings, ValidationError
+from pydantic import BaseModel as PydanticModel
+from pydantic import BaseSettings, PyObject, ValidationError
 from rich.console import Console
+from typing_extensions import Literal
 
 from an_at_sync.actionnetwork import ActionNetworkApi
 from an_at_sync.model import (
@@ -35,6 +34,7 @@ class SyncResult(PydanticModel):
 
 
 class ProgramSettings(BaseSettings):
+    an_at_sync_models: PyObject
     an_api_key: str
     at_base: str
     at_activists_table: str
@@ -47,23 +47,14 @@ class ProgramSettings(BaseSettings):
 
 
 class Program:
-    @staticmethod
-    def load_config(config_path: Path):
-        spec = spec_from_file_location("config", config_path)
-        if spec is None or spec.loader is None:
-            raise Exception("spec or spec.loader for config was None")
-        module = module_from_spec(spec)
-        spec.loader.exec_module(module)
+    def __init__(self, settings: ProgramSettings):
+        # TODO remove when we bump to pydantic>=2.0
+        models = cast(Any, settings.an_at_sync_models)
 
-        return module
+        event_class: Type[BaseEvent] = models.Event
+        activist_class: Type[BaseActivist] = models.Activist
+        rsvp_class: Type[BaseRSVP] = models.RSVP
 
-    def __init__(
-        self,
-        settings: ProgramSettings,
-        activist_class: Type[BaseActivist],
-        event_class: Type[BaseEvent],
-        rsvp_class: Type[BaseRSVP],
-    ):
         an = ActionNetworkApi(api_key=settings.an_api_key)
 
         self.events = EventRepository(
