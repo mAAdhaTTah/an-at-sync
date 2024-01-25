@@ -5,7 +5,8 @@ from typing import Any, Dict, Generic, Iterable, List, Optional, Type, TypeVar, 
 
 from pyairtable import Table
 from pyairtable.formulas import match
-from pydantic import BaseModel as PydanticModel, ValidationError
+from pydantic import BaseModel as PydanticModel
+from pydantic import ValidationError
 
 from an_at_sync.actionnetwork import ActionNetworkApi
 
@@ -55,28 +56,7 @@ class BaseRSVP(BaseModel):
 
 
 class BaseEvent(BaseModel):
-    def postprocess(self) -> Iterable[BaseEvent]:
-        yield self
-
-    def load_rsvps(
-        self,
-        an_event: dict,
-        events: "EventRepository",
-        rsvps: "RSVPRepository",
-        activists: "ActivistRepository",
-    ) -> Iterable[BaseRSVP]:
-        for an_attendance in rsvps.an.get_attendances_from_event(an_event):
-            person_url = an_attendance["_links"]["osdi:person"]["href"]
-            activist = activists.from_actionnetwork_url(person_url)
-            yield rsvps.klass.from_actionnetwork(
-                an_attendance,
-                event=self,
-                activist=activist,
-                event_record=events.get_airtable_record(self)
-                or events.insert_airtable_record(self),
-                activist_record=activists.get_airtable_record(activist)
-                or activists.insert_airtable_record(activist),
-            )
+    pass
 
 
 BaseRSVP.update_forward_refs()
@@ -191,7 +171,7 @@ class EventRepository(BaseRepository[BaseEvent]):
                 if not event:
                     event = self.klass.from_actionnetwork(an_event)
                     self._associate_model(event, an_model=an_event)
-                yield from event.postprocess()
+                yield event
             except ValidationError as e:
                 yield e
 
@@ -201,7 +181,7 @@ class EventRepository(BaseRepository[BaseEvent]):
                 if not event:
                     event = self.klass.from_actionnetwork(an_event)
                     self._associate_model(event, an_model=an_event)
-                yield from event.postprocess()
+                yield event
             except ValidationError as e:
                 yield e
 
@@ -236,6 +216,15 @@ class RSVPRepository(BaseRepository[BaseRSVP]):
                 "Loading from AN for AT source not yet supported"
             )
 
-        yield from event.load_rsvps(
-            an_event, events=events, rsvps=self, activists=activists
-        )
+        for an_attendance in self.an.get_attendances_from_event(an_event):
+            person_url = an_attendance["_links"]["osdi:person"]["href"]
+            activist = activists.from_actionnetwork_url(person_url)
+            yield self.klass.from_actionnetwork(
+                an_attendance,
+                event=event,
+                activist=activist,
+                event_record=events.get_airtable_record(event)
+                or events.insert_airtable_record(event),
+                activist_record=activists.get_airtable_record(activist)
+                or activists.insert_airtable_record(activist),
+            )
