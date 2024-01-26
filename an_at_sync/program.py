@@ -1,4 +1,4 @@
-from typing import Any, Iterable, List, Optional, Type, cast
+from typing import Iterable, List, Optional, Type, cast
 
 from pyairtable import Table as Airtable
 from pydantic import BaseModel as PydanticModel
@@ -34,7 +34,9 @@ class SyncResult(PydanticModel):
 
 
 class ProgramSettings(BaseSettings):
-    an_at_sync_models: PyObject
+    an_at_sync_activist_model: PyObject
+    an_at_sync_event_model: PyObject
+    an_at_sync_rsvp_model: PyObject
     an_api_key: str
     at_base: str
     at_activists_table: str
@@ -48,12 +50,10 @@ class ProgramSettings(BaseSettings):
 
 class Program:
     def __init__(self, settings: ProgramSettings):
-        # TODO remove when we bump to pydantic>=2.0
-        models = cast(Any, settings.an_at_sync_models)
-
-        event_class: Type[BaseEvent] = models.Event
-        activist_class: Type[BaseActivist] = models.Activist
-        rsvp_class: Type[BaseRSVP] = models.RSVP
+        # TODO remove cast when we bump to pydantic>=2.0
+        activist_class = cast(Type[BaseActivist], settings.an_at_sync_activist_model)
+        event_class = cast(Type[BaseEvent], settings.an_at_sync_event_model)
+        rsvp_class = cast(Type[BaseRSVP], settings.an_at_sync_rsvp_model)
 
         an = ActionNetworkApi(api_key=settings.an_api_key)
 
