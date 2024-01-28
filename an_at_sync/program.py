@@ -1,8 +1,9 @@
-from typing import Iterable, List, Optional, Type, cast
+from typing import Iterable, List, Optional, Type
 
 from pyairtable import Table as Airtable
 from pydantic import BaseModel as PydanticModel
-from pydantic import BaseSettings, PyObject, ValidationError
+from pydantic import ConfigDict, ImportString, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from rich.console import Console
 from typing_extensions import Literal
 
@@ -21,11 +22,9 @@ from an_at_sync.model import (
 class SyncResult(PydanticModel):
     status: Literal["unchanged", "inserted", "updated", "skipped", "failed"]
     kind: Literal["activist", "event", "rsvp", "webhook"]
-    instance: Optional[BaseModel]
-    e: Optional[Exception]
-
-    class Config:
-        arbitrary_types_allowed = True
+    instance: Optional[BaseModel] = None
+    e: Optional[Exception] = None
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __str__(self):
         return f"Status for {self.instance}: {self.status}" + (
@@ -34,26 +33,23 @@ class SyncResult(PydanticModel):
 
 
 class ProgramSettings(BaseSettings):
-    an_at_sync_activist_model: PyObject
-    an_at_sync_event_model: PyObject
-    an_at_sync_rsvp_model: PyObject
+    an_at_sync_activist_model: ImportString[Type[BaseActivist]]
+    an_at_sync_event_model: ImportString[Type[BaseEvent]]
+    an_at_sync_rsvp_model: ImportString[Type[BaseRSVP]]
     an_api_key: str
     at_base: str
     at_activists_table: str
     at_events_table: str
     at_rsvp_table: str
     at_api_key: str
-
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 class Program:
     def __init__(self, settings: ProgramSettings):
-        # TODO remove cast when we bump to pydantic>=2.0
-        activist_class = cast(Type[BaseActivist], settings.an_at_sync_activist_model)
-        event_class = cast(Type[BaseEvent], settings.an_at_sync_event_model)
-        rsvp_class = cast(Type[BaseRSVP], settings.an_at_sync_rsvp_model)
+        activist_class = settings.an_at_sync_activist_model
+        event_class = settings.an_at_sync_event_model
+        rsvp_class = settings.an_at_sync_rsvp_model
 
         an = ActionNetworkApi(api_key=settings.an_api_key)
 
