@@ -11,3 +11,5 @@ typer>=0.7.0
 rich>=12.6.0
 typing-extensions>=4.4.0
 python-dotenv>=0.21.1
+fastapi==0.103.2
+uvicorn[standard]
