@@ -59,7 +59,7 @@ class BaseEvent(BaseModel):
     pass
 
 
-BaseRSVP.update_forward_refs()
+BaseRSVP.model_rebuild()
 
 M = TypeVar("M", bound="BaseModel")
 KOD = TypeVar("KOD")

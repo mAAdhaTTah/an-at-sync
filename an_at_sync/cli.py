@@ -53,4 +53,5 @@ def webhook(
     program = Program(
         settings=ProgramSettings(),
     )
-    program.handle_webhook(body)
+    for result in program.handle_webhook(body):
+        program.write_result(result)
