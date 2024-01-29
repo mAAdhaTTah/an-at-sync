@@ -32,8 +32,8 @@ jobs:
         run: |
           flake8 .
           mypy .
-          isort .
-      #    pytest
+          isort . --profile black -c
+          pytest .
       - name: Build package
         run: |
           pip install wheel
