@@ -218,3 +218,29 @@ Create fields returned by `to_airtable` method. Copy from second part of URL and
 ```sh
 python -m an_at_sync sync events --rsvps
 ```
+
+## Configuring the Webhook Handler on Fly.io
+
+Create a Dockerfile in your repo:
+
+```dockerfile
+FROM maadhattah/an-at-sync:latest
+
+COPY ./project_name /app/project_name
+```
+
+This will copy your configuration onto the Docker image.
+
+Next, deploy it to Fly.io:
+
+```sh
+fly launch
+```
+
+It will create an app based on the Dockerfile image. Next, import your secrets:
+
+```sh
+cat .env | fly secrets import
+```
+
+Lastly, create the webhook in ActionNetwork with the url `https://<projet-name>.fly.dev/api/webhooks/actionnetwork`.
