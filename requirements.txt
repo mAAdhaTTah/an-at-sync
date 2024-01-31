@@ -13,3 +13,5 @@ typing-extensions>=4.4.0
 python-dotenv>=0.21.1
 fastapi==0.103.2
 uvicorn[standard]
+rq>=1.15.1
+redis>=3.0.0

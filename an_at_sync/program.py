@@ -42,6 +42,7 @@ class ProgramSettings(BaseSettings):
     at_events_table: str
     at_rsvp_table: str
     at_api_key: str
+    redis: str
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
