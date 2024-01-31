@@ -28,6 +28,7 @@ class MockProgramSettings:
     at_events_table = "at_events_table"
     at_rsvp_table = "at_rsvp_table"
     at_api_key = "at_api_key"
+    redis = "localhost:6379"
 
 
 @pytest.fixture

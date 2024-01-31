@@ -2,8 +2,18 @@ from typing import List
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from redis import Redis
+from rq import Queue
 
 from an_at_sync.program import Program, ProgramSettings
+
+
+def handle_webhook(payload: List[dict]):
+    program = Program(settings=ProgramSettings())
+
+    for result in program.handle_webhook(payload):
+        program.write_result(result)
+
 
 wsgi = FastAPI()
 
@@ -25,10 +35,9 @@ webhooks = APIRouter(
 
 @webhooks.post("/actionnetwork")
 def actionnetwork(payload: List[dict]):
-    program = Program(settings=ProgramSettings())
-
-    for result in program.handle_webhook(payload):
-        program.write_result(result)
+    settings = ProgramSettings()
+    q = Queue(connection=Redis.from_url(settings.redis))
+    q.enqueue(handle_webhook, payload)
 
     return {"success": True}
 
