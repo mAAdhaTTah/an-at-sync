@@ -36,7 +36,7 @@ webhooks = APIRouter(
 @webhooks.post("/actionnetwork")
 def actionnetwork(payload: List[dict]):
     settings = ProgramSettings()
-    q = Queue(connection=Redis.from_url(settings.redis))
+    q = Queue(connection=Redis.from_url(settings.redis_url))
     q.enqueue(handle_webhook, payload)
 
     return {"success": True}
