@@ -9,6 +9,7 @@ from typing_extensions import Literal
 
 from an_at_sync.actionnetwork import ActionNetworkApi
 from an_at_sync.model import (
+    ActionNetworkURLError,
     ActivistRepository,
     BaseActivist,
     BaseEvent,
@@ -136,17 +137,17 @@ class Program:
             return SyncResult(status="failed", kind="event", instance=event, e=e)
 
     def sync_rsvps_from_event(self, event: BaseEvent):
-        yield from self.sync_rsvps(
-            self.rsvps.from_actionnetwork_for_event(
-                event,
-                events=self.events,
-                activists=self.activists,
-            ),
+        rsvps = self.rsvps.from_actionnetwork_for_event(
+            event,
+            events=self.events,
+            activists=self.activists,
         )
 
-    def sync_rsvps(self, rsvps: Iterable[BaseRSVP]):
         for rsvp in rsvps:
-            yield self.sync_rsvp(rsvp)
+            if isinstance(rsvp, ActionNetworkURLError):
+                self.write_exception(rsvp.message, rsvp)
+            elif isinstance(rsvp, BaseRSVP):
+                yield self.sync_rsvp(rsvp)
 
     def sync_rsvp(self, rsvp: BaseRSVP):
         try:
@@ -220,13 +221,15 @@ class Program:
             self.console.print(":white_check_mark:", end=" ")
             self.console.print(f"Syncing {result.kind}{display_name} succeeded")
         elif result.status == "failed":
-            self.console.print(":x:", end=" ")
-            self.console.print(
-                f"Syncing {result.kind}{display_name} failed with error:"
-            )
-            self.console.print(result.e)
+            msg = f"Syncing {result.kind}{display_name} failed with error:"
+            self.write_exception(msg, result.e)
         elif result.status == "skipped":
             self.console.print(":information:", end=" ")
             self.console.print(f"{result.kind}{display_name} was skipped")
         else:
             raise Exception(f"Unhandled status {result.status}")
+
+    def write_exception(self, msg, exception):
+        self.console.print(":x:", end=" ")
+        self.console.print(msg)
+        self.console.print(exception)
