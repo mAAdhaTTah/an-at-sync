@@ -95,6 +95,17 @@ class ObjectDict(Generic[KOD, VOD]):
         return f"<ObjectDict keys={str(self.keys)} values={str(self.values)}>"
 
 
+class ActionNetworkURLError(Exception):
+    def __init__(self, url: str, body: dict) -> None:
+        self.url = url
+        self.body = body
+
+    @property
+    def message(self):
+        error = self.body.get("error", "unknown error")
+        return f"Fetching {self.url} failed with {error}"
+
+
 class BaseRepository(Generic[M]):
     def __init__(self, an: ActionNetworkApi, at: Table, klass: Type[M]) -> None:
         self.an = an
@@ -141,6 +152,8 @@ class BaseRepository(Generic[M]):
 
     def from_actionnetwork_url(self, url: str, **kwargs) -> M:
         an_model = self.an.session.get(url).json()
+        if "error" in an_model:
+            raise ActionNetworkURLError(url, an_model)
         model = self.an_to_model.get(an_model)
         if not model:
             model = self.klass.from_actionnetwork(an_model, **kwargs)
@@ -208,7 +221,7 @@ class RSVPRepository(BaseRepository[BaseRSVP]):
 
     def from_actionnetwork_for_event(
         self, event: BaseEvent, events: EventRepository, activists: ActivistRepository
-    ) -> Iterable[BaseRSVP]:
+    ) -> Iterable[BaseRSVP | ActionNetworkURLError]:
         an_event = events.model_to_an.get(event)
         if an_event is None:
             raise Exception(
@@ -218,13 +231,16 @@ class RSVPRepository(BaseRepository[BaseRSVP]):
 
         for an_attendance in self.an.get_attendances_from_event(an_event):
             person_url = an_attendance["_links"]["osdi:person"]["href"]
-            activist = activists.from_actionnetwork_url(person_url)
-            yield self.klass.from_actionnetwork(
-                an_attendance,
-                event=event,
-                activist=activist,
-                event_record=events.get_airtable_record(event)
-                or events.insert_airtable_record(event),
-                activist_record=activists.get_airtable_record(activist)
-                or activists.insert_airtable_record(activist),
-            )
+            try:
+                activist = activists.from_actionnetwork_url(person_url)
+                yield self.klass.from_actionnetwork(
+                    an_attendance,
+                    event=event,
+                    activist=activist,
+                    event_record=events.get_airtable_record(event)
+                    or events.insert_airtable_record(event),
+                    activist_record=activists.get_airtable_record(activist)
+                    or activists.insert_airtable_record(activist),
+                )
+            except ActionNetworkURLError as e:
+                yield e
